@@ -19,6 +19,7 @@ name: ci-build
 on:
   push:
     branches: ["master"]
+    tags: ["v*"]
   pull_request:
     branches: ["master"]
 env:
@@ -118,7 +119,7 @@ jobs:
           path: output/artifact/debug
   
   push_to_ci_group:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     name: Push to CI Group
     needs:
@@ -152,3 +153,29 @@ jobs:
           cd ${{ github.workspace }}
           echo $COMMIT_MESSAGE_FIXED
           curl -v "https://api.telegram.org/bot${BOT_TOKEN}/sendMediaGroup?chat_id=${GROUP_DEBUG_ID}&message_thread_id=${THREAD_ID}&media=%5B%7B%22type%22:%22document%22,%20%22media%22:%22attach://debug_zip%22,%22parse_mode%22:%22MarkdownV2%22,%22caption%22:\"\"%7D,%7B%22type%22:%22document%22,%20%22media%22:%22attach://release_zip%22,%22parse_mode%22:%22MarkdownV2%22,%22caption%22:${ESCAPED}%7D%5D" -F debug_zip="@artifacts/fas-rs(debug).zip" -F release_zip="@artifacts/fas-rs(release).zip"
+
+  publish_release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    name: Publish GitHub Release
+    needs: release-build
+    permissions:
+      contents: write
+    steps:
+      - name: Download Release Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fas-rs(release)
+          path: artifact
+      - name: Repackage as fas-rs.zip
+        run: |
+          cd artifact
+          zip -9 -rq fas-rs.zip .
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifact/fas-rs.zip
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
